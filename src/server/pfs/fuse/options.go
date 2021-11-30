@@ -33,6 +33,11 @@ type RepoOptions struct {
 	Branch string
 	// Write indicates that the repo should be mounted for writing.
 	Write bool
+	// IgnorePaths lets you specify a "writable hole" in a read-only filesystem
+	// where you can write without error but the written files are discarded on
+	// unmount if you specify IgnorePaths on a writable mount, they will similarly
+	// be accepted but also discarded
+	IgnorePaths []string
 }
 
 func (o *Options) getFuse() *fs.Options {

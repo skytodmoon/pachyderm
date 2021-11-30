@@ -118,10 +118,11 @@ type ServerOptions struct {
 }
 
 type MountBranchRequest struct {
-	Repo   string
-	Branch string
-	Name   string
-	Mode   string // "ro", "rw"
+	Repo        string
+	Branch      string
+	Name        string
+	Mode        string // "ro", "rw"
+	IgnorePaths []string
 }
 
 type MountBranchResponse struct {
@@ -220,16 +221,17 @@ func (mm *MountManager) MaybeStartFsm(key MountKey) {
 	} // else: fsm was already running
 }
 
-func (mm *MountManager) MountBranch(key MountKey, name, mode string) (MountBranchResponse, error) {
+func (mm *MountManager) MountBranch(key MountKey, name, mode string, ignore_paths []string) (MountBranchResponse, error) {
 	// name: an optional name for the mount, corresponds to where on the
 	// filesystem the repo actually gets mounted. e.g. /pfs/{name}
 	mm.MaybeStartFsm(key)
 	fmt.Println("Sending request...")
 	mm.States[key].requests <- MountBranchRequest{
-		Repo:   key.Repo,
-		Branch: key.Branch,
-		Name:   name,
-		Mode:   mode,
+		Repo:        key.Repo,
+		Branch:      key.Branch,
+		Name:        name,
+		Mode:        mode,
+		IgnorePaths: ignore_paths,
 	}
 	fmt.Println("sent!")
 	fmt.Println("reading response...")
@@ -372,6 +374,7 @@ func Server(c *client.APIClient, opts *ServerOptions) error {
 		Path("/repos/{key:.+}/_mount").
 		Queries("mode", "{mode}").
 		Queries("name", "{name}").
+		Queries("ignore_paths", "{ignore_paths}").
 		HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			vs := mux.Vars(req)
 			mode, ok := vs["mode"]
@@ -389,6 +392,11 @@ func Server(c *client.APIClient, opts *ServerOptions) error {
 				http.Error(w, "no key", http.StatusBadRequest)
 				return
 			}
+			ignore_paths_list := []string{}
+			ignore_paths, ok := vs["ignore_paths"]
+			if ok {
+				ignore_paths_list = strings.Split(",", ignore_paths)
+			}
 			key, err := mountKeyFromString(k)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -404,7 +412,7 @@ func Server(c *client.APIClient, opts *ServerOptions) error {
 			}
 			// TODO: use response (serialize it to the client, it's polite to hand
 			// back the object you just modified in the API response)
-			_, err = mm.MountBranch(key, name, mode)
+			_, err = mm.MountBranch(key, name, mode, ignore_paths_list)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -422,12 +430,13 @@ func Server(c *client.APIClient, opts *ServerOptions) error {
 }
 
 type MountState struct {
-	Name       string   `json:"name"`
-	MountKey   MountKey `json:"mount_key"`
-	State      string   `json:"state"`      // "unmounted", "mounting", "mounted", "pushing", "unmounted", "error"
-	Status     string   `json:"status"`     // human readable string with additional info wrt State, e.g. an error message for the error state
-	Mode       string   `json:"mode"`       // "ro", "rw", or "" if unknown/unspecified
-	Mountpoint string   `json:"mountpoint"` // where on the filesystem it's mounted
+	Name        string   `json:"name"`
+	MountKey    MountKey `json:"mount_key"`
+	State       string   `json:"state"`      // "unmounted", "mounting", "mounted", "pushing", "unmounted", "error"
+	Status      string   `json:"status"`     // human readable string with additional info wrt State, e.g. an error message for the error state
+	Mode        string   `json:"mode"`       // "ro", "rw", or "" if unknown/unspecified
+	Mountpoint  string   `json:"mountpoint"` // where on the filesystem it's mounted
+	IgnorePaths []string `json:"ignore_paths"`
 }
 
 type MountStateMachine struct {
@@ -547,8 +556,9 @@ func mountingState(m *MountStateMachine) StateFn {
 		defer m.manager.mu.Unlock()
 		// TODO: shouldn't be repo, should be name
 		m.manager.root.repoOpts[m.MountKey.Repo] = &RepoOptions{
-			Branch: m.MountKey.Repo,
-			Write:  m.Mode == "rw",
+			Branch:      m.MountKey.Repo,
+			Write:       m.Mode == "rw",
+			IgnorePaths: m.IgnorePaths,
 		}
 	}()
 	// re-downloading the repos with an updated RepoOptions set will have the
@@ -610,6 +620,7 @@ func (mm *MountManager) uploadFiles(prefixFilter string) error {
 	// 200MB/sec on my system, when uploading 18K small files.
 	progress.Disable()
 	for path, state := range mm.root.files {
+		// TODO: continue on strings.HasPrefix(path, ignorePath) for ignorePath in ignorePaths
 		if !strings.HasPrefix(path, prefixFilter) {
 			continue
 		}

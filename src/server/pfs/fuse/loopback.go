@@ -686,6 +686,12 @@ func (n *loopbackNode) checkWrite(path string) syscall.Errno {
 	ros := n.root().repoOpts
 	if len(ros) > 0 {
 		ro, ok := ros[repo]
+		for _, ignorePath := range ro.IgnorePaths {
+			if strings.HasPrefix(path, ignorePath) {
+				// allow the write even though we might be a readonly filesystem
+				return 0
+			}
+		}
 		if !ok || !ro.Write {
 			return syscall.EROFS
 		}
