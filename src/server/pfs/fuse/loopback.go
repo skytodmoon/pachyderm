@@ -682,12 +682,14 @@ func (n *loopbackNode) setFileState(path string, state fileState) {
 }
 
 func (n *loopbackNode) checkWrite(path string) syscall.Errno {
-	repo := strings.Split(n.trimPath(path), "/")[0]
+	path_splitted := strings.Split(n.trimPath(path), "/")
+	repo, rest := path_splitted[0], path_splitted[1:]
+	rest_joined := strings.Join(rest, "")
 	ros := n.root().repoOpts
 	if len(ros) > 0 {
 		ro, ok := ros[repo]
 		for _, ignorePath := range ro.IgnorePaths {
-			if strings.HasPrefix(path, ignorePath) {
+			if strings.HasPrefix(rest_joined, ignorePath) {
 				// allow the write even though we might be a readonly filesystem
 				return 0
 			}

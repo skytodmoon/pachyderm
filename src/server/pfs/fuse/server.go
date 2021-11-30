@@ -236,7 +236,7 @@ func (mm *MountManager) MountBranch(key MountKey, name, mode string, ignore_path
 	fmt.Println("sent!")
 	fmt.Println("reading response...")
 	response := <-mm.States[key].responses
-	fmt.Println("read!")
+	fmt.Println("read!", response)
 	return response, response.Error
 }
 
@@ -395,7 +395,7 @@ func Server(c *client.APIClient, opts *ServerOptions) error {
 			ignore_paths_list := []string{}
 			ignore_paths, ok := vs["ignore_paths"]
 			if ok {
-				ignore_paths_list = strings.Split(",", ignore_paths)
+				ignore_paths_list = strings.Split(ignore_paths, ",")
 			}
 			key, err := mountKeyFromString(k)
 			if err != nil {
@@ -508,7 +508,7 @@ type StateFn func(*MountStateMachine) StateFn
 func (m *MountStateMachine) transitionedTo(state, status string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	fmt.Printf("[%s] %s -> %s\n", m.MountKey, m.State, state)
+	fmt.Printf("[%s] %s -> %s\n, (ignore_paths = %v)", m.MountKey, m.State, state)
 	m.State = state
 	m.Status = status
 }
@@ -534,8 +534,9 @@ func unmountedState(m *MountStateMachine) StateFn {
 	// TODO: listen on our request chan, mount filesystems, and respond
 	for {
 		req := <-m.requests
-
 		fmt.Printf("Read req: %+v\n", req)
+
+		m.IgnorePaths = req.IgnorePaths // TODO is this the best place for this?
 		m.responses <- MountBranchResponse{
 			Repo:       m.MountKey.Repo,
 			Branch:     m.MountKey.Branch,
@@ -554,6 +555,7 @@ func mountingState(m *MountStateMachine) StateFn {
 	func() {
 		m.manager.mu.Lock()
 		defer m.manager.mu.Unlock()
+
 		// TODO: shouldn't be repo, should be name
 		m.manager.root.repoOpts[m.MountKey.Repo] = &RepoOptions{
 			Branch:      m.MountKey.Repo,
