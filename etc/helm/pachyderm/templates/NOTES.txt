@@ -3,11 +3,32 @@ SPDX-FileCopyrightText: Pachyderm, Inc. <info@pachyderm.com>
 SPDX-License-Identifier: Apache-2.0
 */ -}}
 
-{{- if and (not .Values.ingress.enabled) (not .Values.pachd.externalService.enabled)  -}}
+{{- if not .Values.pachd.externalService.enabled  -}}
 To connect to your new pachyderm instance, run:
 pachctl config import-kube local --overwrite
 pachctl config set active-context local
 pachctl port-forward
+{{- end -}}
+
+{{-  if and .Values.pachd.externalService.enabled (hasPrefix "localhost" (include "pachyderm.pachctlurl" .)) -}}
+To connect to your new pachyderm instance, run:
+echo '{"pachd_address": "grpc://{{- printf "%s" (include "pachyderm.pachctlurl" .) -}}", "source": 2}' | pachctl config set context "{{ .Release.Name }}" --overwrite && pachctl config set active-context "{{ .Release.Name }}"
+kubectl port-forward {{- printf "svc/pachd-lb %s%:80" (.Release.Name) }}
+While the port forward is running you can access it via pachctl.
+{{- else if and (.Values.pachd.externalService.enabled) (or .Values.oidc.userAccessibleOauthIssuerHosttls .Values.pachd.externalService.tls.enabled) -}}
+To connect to your new pachyderm instance, run:
+echo '{"pachd_address": "grpcs://{{- printf "%s" (include "pachyderm.pachctlurl" .) -}}", "source": 2}' | pachctl config set context "{{ .Release.Name }}" --overwrite && pachctl config set active-context "{{ .Release.Name }}"
+{{- else if and .Values.pachd.externalService.enabled .Values.oidc.userAccessibleOauthIssuerHost -}}
+To connect to your new pachyderm instance, run:
+echo '{"pachd_address": "grpc://{{- printf "%s" (include "pachyderm.pachctlurl" .) -}}", "source": 2}' | pachctl config set context "{{ .Release.Name }}" --overwrite && pachctl config set active-context "{{ .Release.Name }}"
+{{- end -}}
+
+{{ if and (.Values.console.enabled) (.Values.pachd.externalService.enabled) (or .Values.oidc.userAccessibleOauthIssuerHosttls .Values.pachd.externalService.tls.enabled) }}
+You can also access the console at:
+https://{{- printf "%s" (include "pachyderm.pachctlurl" .) }}
+{{else if and (.Values.console.enabled) (.Values.pachd.externalService.enabled)}}
+You can also access the console at:
+http://{{- printf "%s" (include "pachyderm.pachctlurl" .) }}
 {{- end -}}
 
 {{ if and (.Values.oidc.mockIDP) (.Values.pachd.enterpriseLicenseKey) (.Values.pachd.activateAuth) }}

@@ -10,14 +10,14 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   ports:
-  - name: api-grpc-port
-    port: {{ .Values.pachd.externalService.apiGRPCPort }}
-    targetPort: api-grpc-port
-  - name: s3gateway-port
-    port: {{ .Values.pachd.externalService.s3GatewayPort }} 
-    targetPort: s3gateway-port
+  - name: http
+    port: 80
+{{- if .Values.pachd.externalService.tls.enabled }}
+  - name: https
+    port: 443
+{{- end }}
   selector:
-    app: pachd
+    app: pachyderm-envoy
   type: LoadBalancer
   loadBalancerIP: {{ .Values.pachd.externalService.loadBalancerIP }}
 {{ end -}}

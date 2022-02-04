@@ -74,13 +74,7 @@
                         "oauthClientSecretSecretName": {
                             "type": "string"
                         },
-                        "oauthRedirectURI": {
-                            "type": "string"
-                        },
                         "pachdAddress": {
-                            "type": "string"
-                        },
-                        "reactAppRuntimeIssuerURI": {
                             "type": "string"
                         }
                     }
@@ -311,53 +305,44 @@
                 }
             }
         },
-        "ingress": {
+        "loki-stack": {
             "type": "object",
             "properties": {
-                "annotations": {
-                    "type": "object"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "tls": {
+                "grafana": {
                     "type": "object",
                     "properties": {
                         "enabled": {
                             "type": "boolean"
-                        },
-                        "newSecret": {
-                            "type": "object",
-                            "properties": {
-                                "create": {
-                                    "type": "boolean"
-                                },
-                                "crt": {
-                                    "type": "string"
-                                },
-                                "key": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "secretName": {
-                            "type": "string"
                         }
                     }
                 },
-                "uriHttpsProtoOverride": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "loki": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean"
+                "loki": {
+                    "type": "object",
+                    "properties": {
+                        "persistence": {
+                            "type": "object",
+                            "properties": {
+                                "accessModes": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                "annotations": {
+                                    "type": "object"
+                                },
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "size": {
+                                    "type": "string"
+                                },
+                                "storageClassName": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -368,9 +353,6 @@
                     "type": "string"
                 },
                 "RotationTokenExpiry": {
-                    "type": "string"
-                },
-                "issuerURI": {
                     "type": "string"
                 },
                 "mockIDP": {
@@ -387,6 +369,9 @@
                 },
                 "userAccessibleOauthIssuerHost": {
                     "type": "string"
+                },
+                "userAccessibleOauthIssuerHosttls": {
+                    "type": "boolean"
                 }
             }
         },
@@ -452,17 +437,36 @@
                         "annotations": {
                             "type": "object"
                         },
-                        "apiGRPCPort": {
-                            "type": "integer"
-                        },
                         "enabled": {
                             "type": "boolean"
                         },
                         "loadBalancerIP": {
                             "type": "string"
                         },
-                        "s3GatewayPort": {
-                            "type": "integer"
+                        "tls": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "newSecret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "create": {
+                                            "type": "boolean"
+                                        },
+                                        "crt": {
+                                            "type": "string"
+                                        },
+                                        "key": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "secretName": {
+                                    "type": "string"
+                                }
+                            }
                         }
                     }
                 },
@@ -488,6 +492,9 @@
                 },
                 "logLevel": {
                     "type": "string"
+                },
+                "lokiDeploy": {
+                    "type": "boolean"
                 },
                 "lokiLogging": {
                     "type": "boolean"
@@ -706,31 +713,6 @@
                         },
                         "uploadConcurrencyLimit": {
                             "type": "integer"
-                        }
-                    }
-                },
-                "tls": {
-                    "type": "object",
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean"
-                        },
-                        "newSecret": {
-                            "type": "object",
-                            "properties": {
-                                "create": {
-                                    "type": "boolean"
-                                },
-                                "crt": {
-                                    "type": "string"
-                                },
-                                "key": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "secretName": {
-                            "type": "string"
                         }
                     }
                 },

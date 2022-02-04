@@ -36,29 +36,23 @@ imagePullSecrets:
 {{- end }}
 {{- end -}}
 
-{{- define "pachyderm.ingressproto" -}}
-{{- if or .Values.ingress.tls.enabled .Values.ingress.uriHttpsProtoOverride -}}
+{{- define "pachyderm.urlProto" -}}
+{{- if or .Values.oidc.userAccessibleOauthIssuerHosttls .Values.pachd.externalService.tls.enabled -}}
 https
 {{- else -}}
 http
 {{- end -}}
-{{- end }}
+{{- end -}}
 
 {{- define "pachyderm.issuerURI" -}}
-{{- if .Values.oidc.issuerURI -}}
-{{ .Values.oidc.issuerURI }}
-{{- else if .Values.ingress.host -}}
-{{- printf "%s://%s/dex" (include "pachyderm.ingressproto" .) .Values.ingress.host -}}
-{{- else if not .Values.ingress.enabled -}}
-{{- if eq .Values.pachd.service.type "NodePort" -}}
+{{-  if eq .Values.pachd.service.type "NodePort" -}}
 http://pachd:1658
+{{- else if  .Values.pachd.externalService.enabled -}}
+http://pachd:30658/dex
 {{- else -}}
 http://pachd:30658
 {{- end -}}
-{{- else -}}
-{{ fail "For Authentication, an OIDC Issuer for this pachd must be set." }}
 {{- end -}}
-{{- end }}
 
 {{- /*
 reactAppRuntimeIssuerURI: The URI without the path of the user accessible issuerURI. 
@@ -66,42 +60,33 @@ ie. In local deployments, this is http://localhost:30658, while the issuer URI i
 In deployments where the issuerURI is user accessible (ie. Via ingress) this would be the issuerURI without the path
 */ -}}
 {{- define "pachyderm.reactAppRuntimeIssuerURI" -}}
-{{- if .Values.console.config.reactAppRuntimeIssuerURI -}}
-{{ .Values.console.config.reactAppRuntimeIssuerURI }}
-{{- else if .Values.ingress.host -}}
-{{- printf "%s://%s" (include "pachyderm.ingressproto" .) .Values.ingress.host -}}
-{{- else if not .Values.ingress.enabled -}}
+{{-  if .Values.oidc.userAccessibleOauthIssuerHost -}}
+{{- printf "%s://%s" (include "pachyderm.urlProto" .) .Values.oidc.userAccessibleOauthIssuerHost -}}
+{{- else  -}}
 http://localhost:30658
 {{- end }}
-{{- end }}
+{{- end -}}
 
 {{- define "pachyderm.consoleRedirectURI" -}}
-{{- if .Values.console.config.oauthRedirectURI -}}
-{{ .Values.console.config.oauthRedirectURI }}
-{{- else if .Values.ingress.host -}}
-{{- printf "%s://%s/oauth/callback/?inline=true" (include "pachyderm.ingressproto" .) .Values.ingress.host -}}
-{{- else if not .Values.ingress.enabled -}}
-http://localhost:4000/oauth/callback/?inline=true
+{{- if .Values.oidc.userAccessibleOauthIssuerHost -}}
+{{- printf "%s://%s/oauth/callback/?inline=true" (include "pachyderm.urlProto" .) .Values.oidc.userAccessibleOauthIssuerHost -}}
 {{- else -}}
-{{ fail "To connect Console to Pachyderm, Console's Redirect URI must be set." }}
+http://localhost:4000/oauth/callback/?inline=true
 {{- end }}
-{{- end }}
+{{- end -}}
 
 {{- define "pachyderm.pachdRedirectURI" -}}
-{{- if .Values.pachd.oauthRedirectURI -}}
-{{ .Values.pachd.oauthRedirectURI -}}
-{{- else if .Values.ingress.host -}}
-{{- printf "%s://%s/authorization-code/callback" (include "pachyderm.ingressproto" .) .Values.ingress.host -}}
-{{- else if not .Values.ingress.enabled -}}
-http://localhost:30657/authorization-code/callback
+{{-  if .Values.oidc.userAccessibleOauthIssuerHost -}}
+{{- printf "%s://%s/authorization-code/callback" (include "pachyderm.urlProto" .) .Values.oidc.userAccessibleOauthIssuerHost -}}
 {{- else -}}
-{{ fail "For Authentication, an OIDC Redirect URI for this pachd must be set." }}
-{{- end -}}
+http://localhost:30657/authorization-code/callback
 {{- end }}
+{{- end -}}
 
 {{- define "pachyderm.pachdPeerAddress" -}}
 pachd-peer.{{ .Release.Namespace }}.svc.cluster.local:30653
 {{- end }}
+
 
 {{- define "pachyderm.localhostIssuer" -}}
 {{- if .Values.pachd.localhostIssuer -}}
@@ -114,9 +99,9 @@ pachd-peer.{{ .Release.Namespace }}.svc.cluster.local:30653
   {{- end -}}
 {{- else if .Values.pachd.activateEnterpriseMember -}}
 false
-{{- else if not .Values.ingress.enabled -}}
+{{- else if not .Values.pachd.externalService.enabled -}}
 true
-{{- else if .Values.ingress.host -}}
+{{- else if .Values.oidc.userAccessibleOauthIssuerHost -}}
 false
 {{- end -}}
 {{- end }}
@@ -124,10 +109,10 @@ false
 {{- define "pachyderm.userAccessibleOauthIssuerHost" -}}
 {{- if .Values.oidc.userAccessibleOauthIssuerHost -}}
 {{ .Values.oidc.userAccessibleOauthIssuerHost }}
-{{- else if not .Values.ingress.enabled -}}
+{{- else -}}
 localhost:30658
 {{- end -}}
-{{- end }}
+{{- end -}}
 
 {{- define "pachyderm.idps" -}}
 {{- if .Values.oidc.upstreamIDPs }}
@@ -139,5 +124,15 @@ localhost:30658
       jsonConfig: '{"username": "admin", "password": "password"}'
 {{- else }}
     {{- fail "either oidc.upstreamIDPs or oidc.mockIDP must be set in non-LOCAL deployments" }}
+{{- end }}
+{{- end }}
+
+{{- define "pachyderm.pachctlurl" -}}
+{{- if regexMatch "^[a-z]*:[0-9]*$" .Values.oidc.userAccessibleOauthIssuerHost -}}
+{{ .Values.oidc.userAccessibleOauthIssuerHost }}
+{{- else if or .Values.oidc.userAccessibleOauthIssuerHosttls .Values.pachd.externalService.tls.enabled -}}
+{{- .Values.oidc.userAccessibleOauthIssuerHost }}:443
+{{- else }}
+{{- .Values.oidc.userAccessibleOauthIssuerHost }}:80
 {{- end }}
 {{- end }}
