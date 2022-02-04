@@ -101,7 +101,9 @@ pachd-peer.{{ .Release.Namespace }}.svc.cluster.local:30653
 false
 {{- else if not .Values.pachd.externalService.enabled -}}
 true
-{{- else if .Values.oidc.userAccessibleOauthIssuerHost -}}
+{{- else if  (hasPrefix "localhost" .Values.oidc.userAccessibleOauthIssuerHost) -}}
+true
+{{- else -}}
 false
 {{- end -}}
 {{- end }}
