@@ -7,20 +7,20 @@ kind: Deployment
 metadata:
   annotations:
   labels:
-    app: pachyderm-envoy
+    app: pachd-proxy
     suite: pachyderm
-  name: pachyderm-envoy
+  name: pachd-proxy
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pachyderm-envoy
+      app: pachd-proxy
   template:
     metadata:
       labels:
-        app: pachyderm-envoy
-      name: pachyderm-envoy
+        app: pachd-proxy
+      name: pachd-proxy
     spec:
       containers:
       - args:
@@ -78,15 +78,15 @@ spec:
           timeoutSeconds: 1
         volumeMounts:
         - mountPath: /etc/envoy
-          name: envoy-config
+          name: proxy-config
         {{- if .Values.pachd.externalService.tls.enabled }}
         - mountPath: /pachd-tls-cert
           name: pachd-tls-cert
         {{- end }}
       volumes:
       - configMap:
-          name: pachyderm-envoy-config
-        name: envoy-config
+          name: proxy-config
+        name: proxy-config
         {{- if .Values.pachd.externalService.tls.enabled }}
       - name: pachd-tls-cert
         secret:

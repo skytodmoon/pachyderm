@@ -17,7 +17,7 @@ spec:
     port: 443
 {{- end }}
   selector:
-    app: pachyderm-envoy
+    app: pachd-proxy
   type: LoadBalancer
   loadBalancerIP: {{ .Values.pachd.externalService.loadBalancerIP }}
 {{ end -}}

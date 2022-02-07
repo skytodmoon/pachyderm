@@ -2,9 +2,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   labels:
-    app: pachyderm-envoy
+    app: pachd
     suite: pachyderm
-  name: pachyderm-envoy-config
+  name: proxy-config
   namespace: {{ .Release.Namespace }}
 data:
   envoy.yaml: |
