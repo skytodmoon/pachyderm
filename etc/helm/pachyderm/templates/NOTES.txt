@@ -13,7 +13,7 @@ pachctl port-forward
 {{-  if and .Values.pachd.externalService.enabled (hasPrefix "localhost" (include "pachyderm.pachctlurl" .)) -}}
 To connect to your new pachyderm instance, run:
 echo '{"pachd_address": "grpc://{{- printf "%s" (include "pachyderm.pachctlurl" .) -}}", "source": 2}' | pachctl config set context "{{ .Release.Name }}" --overwrite && pachctl config set active-context "{{ .Release.Name }}"
-kubectl port-forward {{- printf "svc/pachd-lb %s%:80" (.Release.Name) }}
+kubectl port-forward {{- printf " svc/pachd-lb %s:80" ((regexFind ":.*" (include "pachyderm.pachctlurl" .)) | trimAll ":")}}
 While the port forward is running you can access it via pachctl.
 {{- else if and (.Values.pachd.externalService.enabled) (or .Values.oidc.userAccessibleOauthIssuerHosttls .Values.pachd.externalService.tls.enabled) -}}
 To connect to your new pachyderm instance, run:
