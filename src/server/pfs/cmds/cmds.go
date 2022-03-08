@@ -45,7 +45,15 @@ const (
 
 // Cmds returns a slice containing pfs commands.
 func Cmds() []*cobra.Command {
+	return cmdsByMode(false)
+}
+func DebugCmds() []*cobra.Command {
+	return cmdsByMode(true)
+}
+
+func cmdsByMode(debugMode bool) []*cobra.Command {
 	var commands []*cobra.Command
+	var debugCommands []*cobra.Command
 
 	var raw bool
 	var output string
@@ -156,6 +164,7 @@ or type (e.g. csv, binary, images, etc).`,
 	inspectRepo.Flags().AddFlagSet(timestampFlags)
 	shell.RegisterCompletionFunc(inspectRepo, shell.RepoCompletion)
 	commands = append(commands, cmdutil.CreateAlias(inspectRepo, "inspect repo"))
+	debugCommands = append(debugCommands, cmdutil.CreateAlias(inspectRepo, "inspect repo"))
 
 	var all bool
 	var repoType string
@@ -207,6 +216,7 @@ or type (e.g. csv, binary, images, etc).`,
 	listRepo.Flags().BoolVar(&all, "all", false, "include system repos of all types")
 	listRepo.Flags().StringVar(&repoType, "type", "", "only include repos of the given type")
 	commands = append(commands, cmdutil.CreateAlias(listRepo, "list repo"))
+	debugCommands = append(debugCommands, cmdutil.CreateAlias(listRepo, "list repo"))
 
 	var force bool
 	deleteRepo := &cobra.Command{
@@ -405,6 +415,7 @@ $ {{alias}} test@fork -p XXX`,
 	inspectCommit.Flags().AddFlagSet(timestampFlags)
 	shell.RegisterCompletionFunc(inspectCommit, shell.BranchCompletion)
 	commands = append(commands, cmdutil.CreateAlias(inspectCommit, "inspect commit"))
+	debugCommands = append(debugCommands, cmdutil.CreateAlias(inspectCommit, "inspect commit"))
 
 	var from string
 	var number int64
@@ -621,6 +632,7 @@ $ {{alias}} foo@master --from XXX`,
 	listCommit.Flags().AddFlagSet(timestampFlags)
 	shell.RegisterCompletionFunc(listCommit, shell.RepoCompletion)
 	commands = append(commands, cmdutil.CreateAlias(listCommit, "list commit"))
+	debugCommands = append(debugCommands, cmdutil.CreateAlias(listCommit, "list commit"))
 
 	waitCommit := &cobra.Command{
 		Use:   "{{alias}} <repo>@<branch-or-commit>",
@@ -907,6 +919,7 @@ Any pachctl command that can take a commit, can take a branch name instead.`,
 	inspectBranch.Flags().AddFlagSet(timestampFlags)
 	shell.RegisterCompletionFunc(inspectBranch, shell.BranchCompletion)
 	commands = append(commands, cmdutil.CreateAlias(inspectBranch, "inspect branch"))
+	debugCommands = append(debugCommands, cmdutil.CreateAlias(inspectBranch, "inspect branch"))
 
 	listBranch := &cobra.Command{
 		Use:   "{{alias}} <repo>",
@@ -946,6 +959,7 @@ Any pachctl command that can take a commit, can take a branch name instead.`,
 	listBranch.Flags().AddFlagSet(outputFlags)
 	shell.RegisterCompletionFunc(listBranch, shell.RepoCompletion)
 	commands = append(commands, cmdutil.CreateAlias(listBranch, "list branch"))
+	debugCommands = append(debugCommands, cmdutil.CreateAlias(listBranch, "list branch"))
 
 	deleteBranch := &cobra.Command{
 		Use:   "{{alias}} <repo>@<branch>",
@@ -1136,12 +1150,12 @@ $ {{alias}} repo@branch -i http://host/path`,
 	putFile.Flags().BoolVar(&enableProgress, "progress", isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd()), "Print progress bars.")
 	putFile.Flags().BoolVar(&fullPath, "full-path", false, "If true, use the entire path provided to -f as the target filename in PFS. By default only the base of the path is used.")
 	shell.RegisterCompletionFunc(putFile,
-		func(flag, text string, maxCompletions int64) ([]prompt.Suggest, shell.CacheFunc) {
+		func(c *client.APIClient, flag, text string, maxCompletions int64) ([]prompt.Suggest, shell.CacheFunc) {
 			if flag == "-f" || flag == "--file" || flag == "-i" || flag == "input-file" {
 				cs, cf := shell.FilesystemCompletion(flag, text, maxCompletions)
 				return cs, shell.AndCacheFunc(cf, shell.SameFlag(flag))
 			} else if flag == "" || flag == "-c" || flag == "--commit" || flag == "-o" || flag == "--append" {
-				cs, cf := shell.FileCompletion(flag, text, maxCompletions)
+				cs, cf := shell.FileCompletion(c, flag, text, maxCompletions)
 				return cs, shell.AndCacheFunc(cf, shell.SameFlag(flag))
 			}
 			return nil, shell.SameFlag(flag)
@@ -1665,6 +1679,9 @@ Objects are a low-level resource and should not be accessed directly by most use
 	// their own file)
 	commands = append(commands, mountCmds()...)
 
+	if debugMode {
+		return debugCommands
+	}
 	return commands
 }
 
