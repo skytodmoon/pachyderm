@@ -3,7 +3,9 @@ package transforms
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -14,27 +16,32 @@ import (
 )
 
 func TestSnowflakeBulkExport(t *testing.T) {
+	// Two parts:
+	// 1. Run COPY INTO to stage files
+	// 2. Run GET to download those staged files
+	// Note: in real Pachyderm systems, these parts would be run as separate pipelines
 	ctx := context.Background()
-
-	// COPY INTO <location> + LIST <location>
-	inputDir, outputDir := t.TempDir(), t.TempDir()
-	writeCronFile(t, inputDir)
-
-	db := testsnowflake.NewSnowSQL(t) // this creates an ephemeral database, but we won't use it
+	log := logrus.StandardLogger()
+	db := testsnowflake.NewSnowSQL(t)
 	defer db.Close()
+
+	// SnowflakeStageFiles
+	inputDir, outputDir := t.TempDir(), t.TempDir()
 
 	nRows := 10
 	tableName := createTableWithData(t, db, nRows)
+	internalStage := fmt.Sprintf("%%%s", tableName) // use Snowflake Table Stage
 
 	err := SnowflakeStageFiles(ctx, db, SnowflakeStageFilesParams{
-		Logger: logrus.StandardLogger(),
+		Logger: log,
 
 		InputDir:  inputDir,
 		OutputDir: outputDir,
 
 		Query:         fmt.Sprintf("select * from %s", tableName),
-		InternalStage: fmt.Sprintf("%%%s", tableName), // use Snowflake Table Stage
+		InternalStage: internalStage,
 		FileFormat:    "CSV",
+		Compression:   "NONE",
 		PartitionBy:   "id",
 		MaxFileSize:   16777216,
 	})
@@ -44,8 +51,22 @@ func TestSnowflakeBulkExport(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, dirEntrs, nRows)
 
-	// GET <location>
+	// SnowflakeGet
+	getOutputDir := t.TempDir()
+	SnowflakeGet(ctx, db, SnowflakeGetParams{
+		Logger:    log,
+		InputDir:  outputDir,
+		OutputDir: getOutputDir,
+	})
 
+	dirEntrs, err = os.ReadDir(getOutputDir)
+	require.NoError(t, err)
+	require.Len(t, dirEntrs, nRows)
+	for _, d := range dirEntrs {
+		data, err := ioutil.ReadFile(filepath.Join(getOutputDir, d.Name()))
+		require.NoError(t, err)
+		t.Log(d.Name(), string(data))
+	}
 }
 
 func createTableWithData(t *testing.T, db *sqlx.DB, n int) string {

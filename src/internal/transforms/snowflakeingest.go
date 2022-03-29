@@ -3,9 +3,11 @@ package transforms
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pachyderm/pachyderm/v2/src/internal/errors"
@@ -26,9 +28,22 @@ type SnowflakeStageFilesParams struct {
 	InternalStage string
 	PartitionBy   string
 	FileFormat    string // CSV | JSON | PARQUET
-	MaxFileSize   uint   // default 16777216
+	Compression   string
+	MaxFileSize   uint // default 16777216
 }
 
+type SnowflakeGetParams struct {
+	Logger *logrus.Logger
+
+	// PFS
+	InputDir, OutputDir string
+
+	// Snowflake
+	Parallel int // TODO
+}
+
+// SnowflakeStageFiles exports files to a Snowfalke internal stage, then writes the file names to a local directory.
+// The content of each file is based on the cron timestamp in the InputDir.
 func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStageFilesParams) error {
 	log := params.Logger
 
@@ -36,9 +51,9 @@ func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStage
 	copy := fmt.Sprintf(`COPY INTO @%s
 		FROM (%s)
 		PARTITION BY (%s)
-		FILE_FORMAT = (TYPE = %s)
+		FILE_FORMAT = (TYPE = %s COMPRESSION = %s)
 		MAX_FILE_SIZE = %d
-	`, params.InternalStage, params.Query, params.PartitionBy, params.FileFormat, params.MaxFileSize)
+	`, params.InternalStage, params.Query, params.PartitionBy, params.FileFormat, params.Compression, params.MaxFileSize)
 	log.Infof("Executing query: %s", copy)
 	_, err := db.Exec(copy)
 	if err != nil {
@@ -71,18 +86,9 @@ func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStage
 	}
 
 	// write file names from Snowflake to OutputDir
-	timestamp, err := readCronTimestamp(params.Logger, params.InputDir)
-	if err != nil {
-		return err
-	}
-	contents := fmt.Sprintf("%d\n", timestamp)
-	// Snowflake file hiearchy can have arbitrary depth, we need to re-create this locally
-	for _, f := range files {
-		parent := filepath.Dir(f)
-		if err = os.MkdirAll(filepath.Join(params.OutputDir, parent), fileMode); err != nil {
-			return errors.EnsureStack(err)
-		}
-		outputPath := filepath.Join(params.OutputDir, f)
+	for partition, filename := range files {
+		outputPath := filepath.Join(params.OutputDir, strconv.Itoa(partition))
+		contents := filepath.Join(params.InternalStage, filename)
 		if err = ioutil.WriteFile(outputPath, []byte(contents), fileMode); err != nil {
 			return errors.EnsureStack(err)
 		}
@@ -90,4 +96,49 @@ func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStage
 	return nil
 }
 
-func Get(ctx context.Context, db *sqlx.DB) {}
+func SnowflakeGet(ctx context.Context, db *sqlx.DB, params SnowflakeGetParams) error {
+	log := params.Logger
+
+	return bijectiveMap(params.InputDir, params.OutputDir, IdentityPM, func(r io.Reader, w io.Writer) error {
+		snowflakePath, err := io.ReadAll(r)
+		if err != nil {
+			return errors.EnsureStack(err)
+		}
+
+		// use a temp directory
+		tempDirname, err := os.MkdirTemp("", "snowflake-get")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDirname)
+		query := fmt.Sprintf("GET @%s file://%s overwrite=true", snowflakePath, tempDirname)
+		log.Infof("Executing: %s", query)
+		rows, err := db.Query(query)
+		if err != nil {
+			return errors.EnsureStack(err)
+		}
+		defer rows.Close()
+
+		files := []string{}
+		for rows.Next() {
+			var (
+				file, size, status, message string
+			)
+			if err = rows.Scan(&file, &size, &status, &message); err != nil {
+				return errors.EnsureStack(err)
+			}
+			files = append(files, file)
+			log.Infof("%s, %s, %s, %s", file, size, status, message)
+		}
+		rows.Close()
+
+		for _, f := range files {
+			bytes, err := ioutil.ReadFile(filepath.Join(tempDirname, f))
+			if err != nil {
+				return err
+			}
+			w.Write(bytes)
+		}
+		return nil
+	})
+}
