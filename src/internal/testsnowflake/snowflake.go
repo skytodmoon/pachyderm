@@ -16,19 +16,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// NewSnowSQL creates an emphermeral database in a real Snowflake instance.
-func NewSnowSQL(t testing.TB) *sqlx.DB {
-	ctx := context.Background()
-	log := logrus.StandardLogger()
-
+func NewSnowflakeURL(t testing.TB) pachsql.URL {
 	user := os.Getenv("SNOWFLAKE_USER")
-	password := os.Getenv("SNOWFLAKE_PASSWORD")
 	account_identifier := os.Getenv("SNOWFLAKE_ACCOUNT")
 	dsn := fmt.Sprintf("snowflake://%s@%s", user, account_identifier)
 
 	url, err := pachsql.ParseURL(dsn)
 	require.NoError(t, err)
-	db := testutil.OpenDBURL(t, *url, password)
+	return *url
+}
+
+// NewSnowSQL creates an emphermeral database in a real Snowflake instance.
+func NewSnowSQL(t testing.TB) *sqlx.DB {
+	ctx := context.Background()
+	log := logrus.StandardLogger()
+
+	url := NewSnowflakeURL(t)
+	password := os.Getenv("SNOWFLAKE_PASSWORD")
+	db := testutil.OpenDBURL(t, url, password)
 
 	ctx, cf := context.WithTimeout(ctx, 5*time.Second)
 	defer cf()
@@ -38,5 +43,5 @@ func NewSnowSQL(t testing.TB) *sqlx.DB {
 	url.Database = dbname
 	url.Schema = "public"
 
-	return testutil.OpenDBURL(t, *url, password)
+	return testutil.OpenDBURL(t, url, password)
 }
