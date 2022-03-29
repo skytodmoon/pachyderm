@@ -407,6 +407,10 @@ func (a *apiServer) rollPachd(ctx context.Context, paused bool) error {
 		if c.Data == nil {
 			c.Data = make(map[string]string)
 		}
+		if c.Annotations == nil {
+			c.Annotations = make(map[string]string)
+		}
+		c.Annotations[updatedAtFieldName] = time.Now().Format(time.RFC3339Nano)
 		if paused && c.Data["MODE"] == "paused" {
 			// Short-circuit and do not update if configmap
 			// is already in the correct state.  This keeps
@@ -534,21 +538,24 @@ func (a *apiServer) PauseStatus(ctx context.Context, req *ec.PauseStatusRequest)
 	if err != nil {
 		return nil, errors.Errorf("could not parse update time %v: %v", c.Annotations[restartedAtFieldName], err)
 	}
-	log.Println("QQQ updateAt:", updatedAt)
+	log.Println("QQQ updatedAt:", updatedAt)
 
 	pods := kc.CoreV1().Pods(a.env.namespace)
 	pp, err := pods.List(ctx, metav1.ListOptions{
 		LabelSelector: "app=pachd",
 	})
 	if err != nil {
+		log.Println("error listing pods:", err)
 		return nil, errors.Errorf("could not get pachd pods: %v", err)
 	}
+	log.Println(len(pp.Items), "pods")
 	var sawAfter, sawBefore bool
 	for _, p := range pp.Items {
 		// If the pod does not have the Kubernetes restartedAt
 		// annotation, then it must have existed before the configMap
 		// was updated.
 		if p.Annotations[restartedAtFieldName] == "" {
+			log.Println("no restartedAt; saw before")
 			sawBefore = true
 			continue
 		}
@@ -556,6 +563,7 @@ func (a *apiServer) PauseStatus(ctx context.Context, req *ec.PauseStatusRequest)
 		if err != nil {
 			return nil, errors.Errorf("could not parse restarted time %v: %v", p.Annotations[restartedAtFieldName], err)
 		}
+		log.Println(restartedAt, p.Annotations[restartedAtFieldName])
 		if restartedAt.Before(updatedAt) {
 			sawBefore = true
 		} else {
@@ -568,6 +576,7 @@ func (a *apiServer) PauseStatus(ctx context.Context, req *ec.PauseStatusRequest)
 		status = ec.PauseStatusResponse_PARTIALLY_PAUSED
 	case sawBefore:
 		// nothing has cycled yet; configmap has yet to take effect
+		log.Println("saw before taking effect")
 		if c.Data["MODE"] == "paused" {
 			status = ec.PauseStatusResponse_UNPAUSED
 		} else {
@@ -575,6 +584,7 @@ func (a *apiServer) PauseStatus(ctx context.Context, req *ec.PauseStatusRequest)
 		}
 	case sawAfter:
 		// everything has cycled; configmap has taken effect
+		log.Println("saw after taking effect", c.Data["MODE"] == "paused")
 		if c.Data["MODE"] == "paused" {
 			status = ec.PauseStatusResponse_PAUSED
 		} else {
