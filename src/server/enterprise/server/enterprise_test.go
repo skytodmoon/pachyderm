@@ -310,31 +310,46 @@ func TestEnterpriseConfigMigration(t *testing.T) {
      while :; do  kubectl port-forward svc/pachd 30650:1650; done
 */
 func TestPauseUnpause(t *testing.T) {
+	t.Log("foo")
 	if testing.Short() {
 		t.Skip("Skipping integration tests in short mode")
 	}
 
 	testutil.DeleteAll(t)
+	t.Log("deleted all")
 	defer testutil.DeleteAll(t)
 	client := testutil.GetPachClient(t)
+	t.Log("got pach client")
 
 	// Activate Pachyderm Enterprise and make sure the state is ACTIVE
 	testutil.ActivateEnterprise(t, client)
+	t.Log("activated enterprise")
 	testutil.ActivateAuth(t)
+	t.Log("activated auth")
 
+	t.Log("pausing")
 	_, err := client.Enterprise.Pause(client.Ctx(), &enterprise.PauseRequest{})
+	t.Log("pause sent")
 	require.NoError(t, err)
 	bo := backoff.NewExponentialBackOff()
 	backoff.Retry(func() error {
+		t.Log("checking status …")
 		resp, err := client.Enterprise.PauseStatus(client.Ctx(), &enterprise.PauseStatusRequest{})
+		t.Log("status checked", err, resp, resp == nil)
+		if resp != nil {
+			t.Log("status", resp.GetStatus())
+		}
 		if err != nil {
 			return errors.Errorf("could not get pause status %w", err)
 		}
 		if resp.Status == enterprise.PauseStatusResponse_PAUSED {
+			t.Log("returning non-nil")
 			return nil
 		}
+		t.Log("interval:", bo.CurrentInterval)
 		return errors.Errorf("status: %v", resp.Status)
 	}, bo)
+	t.Log("checked pause status")
 
 	// ListRepo should return an error since the cluster is paused now
 	_, err = client.ListRepo()
