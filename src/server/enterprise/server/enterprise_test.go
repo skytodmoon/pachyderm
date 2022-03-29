@@ -355,19 +355,24 @@ func TestPauseUnpause(t *testing.T) {
 	_, err = client.ListRepo()
 	require.YesError(t, err)
 
+	t.Log("unpausing")
 	_, err = client.Enterprise.Unpause(client.Ctx(), &enterprise.UnpauseRequest{})
 	require.NoError(t, err)
 	bo.Reset()
 	backoff.Retry(func() error {
+		t.Log("checking pause status")
 		resp, err := client.Enterprise.PauseStatus(client.Ctx(), &enterprise.PauseStatusRequest{})
+		t.Log("checked pause status", err, resp, resp == nil)
 		if err != nil {
 			return errors.Errorf("could not get pause status %v", err)
 		}
+		t.Log("status", resp.GetStatus())
 		if resp.Status == enterprise.PauseStatusResponse_UNPAUSED {
 			return nil
 		}
 		return errors.Errorf("status: %v", resp.Status)
 	}, bo)
+	t.Log("cluster is unpaused")
 }
 
 func TestPauseUnpauseNoWait(t *testing.T) {
