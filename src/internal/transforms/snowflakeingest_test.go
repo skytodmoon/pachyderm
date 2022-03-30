@@ -39,11 +39,11 @@ func TestSnowflakeBulkExport(t *testing.T) {
 		InputDir:  inputDir,
 		OutputDir: outputDir,
 
-		Query:         fmt.Sprintf("select * from %s", tableName),
+		Query:         fmt.Sprintf("select id, col_a from %s", tableName),
 		InternalStage: fmt.Sprintf("@%%%s", tableName), // Table Stages are referenced by @%
-		FileFormat:    "CSV",
-		Compression:   "NONE",
-		PartitionBy:   "id",
+		FileFormat:    "Parquet",
+		Compression:   "AUTO",
+		PartitionBy:   "to_varchar(id)",
 		MaxFileSize:   16777216,
 	})
 	require.NoError(t, err)
