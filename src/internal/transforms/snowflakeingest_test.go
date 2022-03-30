@@ -27,19 +27,20 @@ func TestSnowflakeBulkExport(t *testing.T) {
 
 	// SnowflakeStageFiles
 	inputDir, outputDir := t.TempDir(), t.TempDir()
+	writeCronFile(t, inputDir)
 
-	nRows := 10
+	nRows := 3
 	tableName := createTableWithData(t, db, nRows)
-	internalStage := fmt.Sprintf("%%%s", tableName) // use Snowflake Table Stage
 
 	err := SnowflakeStageFiles(ctx, db, SnowflakeStageFilesParams{
 		Logger: log,
 
+		Name:      "test",
 		InputDir:  inputDir,
 		OutputDir: outputDir,
 
 		Query:         fmt.Sprintf("select * from %s", tableName),
-		InternalStage: internalStage,
+		InternalStage: fmt.Sprintf("@%%%s", tableName), // Table Stages are referenced by @%
 		FileFormat:    "CSV",
 		Compression:   "NONE",
 		PartitionBy:   "id",
@@ -53,11 +54,12 @@ func TestSnowflakeBulkExport(t *testing.T) {
 
 	// SnowflakeGet
 	getOutputDir := t.TempDir()
-	SnowflakeGet(ctx, db, SnowflakeGetParams{
+	err = SnowflakeGet(ctx, db, SnowflakeGetParams{
 		Logger:    log,
 		InputDir:  outputDir,
 		OutputDir: getOutputDir,
 	})
+	require.NoError(t, err)
 
 	dirEntrs, err = os.ReadDir(getOutputDir)
 	require.NoError(t, err)
@@ -65,7 +67,7 @@ func TestSnowflakeBulkExport(t *testing.T) {
 	for _, d := range dirEntrs {
 		data, err := ioutil.ReadFile(filepath.Join(getOutputDir, d.Name()))
 		require.NoError(t, err)
-		t.Log(d.Name(), string(data))
+		require.True(t, len(data) > 0)
 	}
 }
 

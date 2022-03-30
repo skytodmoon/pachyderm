@@ -20,7 +20,8 @@ type SnowflakeStageFilesParams struct {
 	// Instrumentation
 	Logger *logrus.Logger
 
-	// PFS
+	// Pachyderm
+	Name                string
 	InputDir, OutputDir string
 
 	// Snowflake
@@ -28,8 +29,8 @@ type SnowflakeStageFilesParams struct {
 	InternalStage string
 	PartitionBy   string
 	FileFormat    string // CSV | JSON | PARQUET
-	Compression   string
-	MaxFileSize   uint // default 16777216
+	Compression   string // AUTO | GZIP | BZ2 | BROTLI | ZSTD | DEFLATE | RAW_DEFLATE | NONE
+	MaxFileSize   uint   // default 16777216
 }
 
 type SnowflakeGetParams struct {
@@ -42,27 +43,35 @@ type SnowflakeGetParams struct {
 	Parallel int // TODO
 }
 
-// SnowflakeStageFiles exports files to a Snowfalke internal stage, then writes the file names to a local directory.
-// The content of each file is based on the cron timestamp in the InputDir.
+// SnowflakeStageFiles exports data as files to a Snowflake internal stage, then writes the file names locally.
+// Note: we name the output files by the partition number, and save the Snowflake filepath as the content.
+// The consumer of these files will run Snowflake's GET command to download the file.
 func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStageFilesParams) error {
 	log := params.Logger
 
 	// COPY INTO <location>
-	copy := fmt.Sprintf(`COPY INTO @%s
+	timestamp, err := readCronTimestamp(params.Logger, params.InputDir)
+	if err != nil {
+		return err
+	}
+	// Namespace the files associated with this particular run by the name of the pipeline and cron timestamp.
+	// This will be used by LIST to get only the files we need.
+	snowflakePath := fmt.Sprintf("%s/%s/%d", params.InternalStage, params.Name, timestamp)
+	copy := fmt.Sprintf(`COPY INTO %s
 		FROM (%s)
 		PARTITION BY (%s)
 		FILE_FORMAT = (TYPE = %s COMPRESSION = %s)
 		MAX_FILE_SIZE = %d
-	`, params.InternalStage, params.Query, params.PartitionBy, params.FileFormat, params.Compression, params.MaxFileSize)
-	log.Infof("Executing query: %s", copy)
-	_, err := db.Exec(copy)
+	`, snowflakePath, params.Query, params.PartitionBy, params.FileFormat, params.Compression, params.MaxFileSize)
+	log.Infof("Query: %s", copy)
+	_, err = db.Exec(copy)
 	if err != nil {
 		return errors.EnsureStack(err)
 	}
 
 	// LIST <location>
-	list := fmt.Sprintf("list @%s", params.InternalStage)
-	log.Infof("Executing query: %s", list)
+	list := fmt.Sprintf("LIST %s", snowflakePath)
+	log.Infof("Query: %s", list)
 	rows, err := db.Query(list)
 	if err != nil {
 		return errors.EnsureStack(err)
@@ -80,10 +89,6 @@ func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStage
 		files = append(files, name)
 	}
 	rows.Close()
-	if len(files) == 0 {
-		log.Info("Zero files exported")
-		return nil
-	}
 
 	// write file names from Snowflake to OutputDir
 	for partition, filename := range files {
@@ -92,52 +97,55 @@ func SnowflakeStageFiles(ctx context.Context, db *sqlx.DB, params SnowflakeStage
 		if err = ioutil.WriteFile(outputPath, []byte(contents), fileMode); err != nil {
 			return errors.EnsureStack(err)
 		}
+		log.Infof("Wrote %s to %s", contents, outputPath)
 	}
 	return nil
 }
 
 func SnowflakeGet(ctx context.Context, db *sqlx.DB, params SnowflakeGetParams) error {
-	log := params.Logger
-
 	return bijectiveMap(params.InputDir, params.OutputDir, IdentityPM, func(r io.Reader, w io.Writer) error {
-		snowflakePath, err := io.ReadAll(r)
-		if err != nil {
-			return errors.EnsureStack(err)
-		}
+		log := params.Logger
 
-		// use a temp directory
-		tempDirname, err := os.MkdirTemp("", "snowflake-get")
+		// src is a Snowflake path to a staged file
+		// e.g. stage/a/b/c/file
+		src, err := io.ReadAll(r)
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(tempDirname)
-		query := fmt.Sprintf("GET @%s file://%s overwrite=true", snowflakePath, tempDirname)
-		log.Infof("Executing: %s", query)
+
+		// create temp dir to save output of GET
+		tempDir, err := os.MkdirTemp("", "snowflake-get")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDir)
+
+		// GET @stage/a/b/c/file file:///localdir -> /localdir/file
+		query := fmt.Sprintf("GET %s file://%s", src, tempDir)
+		log.Infof("Query: %s", query)
 		rows, err := db.Query(query)
 		if err != nil {
 			return errors.EnsureStack(err)
 		}
-		defer rows.Close()
-
-		files := []string{}
-		for rows.Next() {
-			var (
-				file, size, status, message string
-			)
-			if err = rows.Scan(&file, &size, &status, &message); err != nil {
-				return errors.EnsureStack(err)
-			}
-			files = append(files, file)
-			log.Infof("%s, %s, %s, %s", file, size, status, message)
-		}
 		rows.Close()
 
-		for _, f := range files {
-			bytes, err := ioutil.ReadFile(filepath.Join(tempDirname, f))
-			if err != nil {
-				return err
+		dirEntrs, err := os.ReadDir(tempDir)
+		if err != nil {
+			return err
+		}
+		// There should be only one file due to the way we construct the Snowflake source path.
+		// However, GET can download multiple files with a common prefix, so this loop future proofs us a bit.
+		for _, de := range dirEntrs {
+			if de.Type().IsRegular() {
+				bytes, err := ioutil.ReadFile(filepath.Join(tempDir, de.Name()))
+				if err != nil {
+					return err
+				}
+				_, err = w.Write(bytes)
+				if err != nil {
+					return err
+				}
 			}
-			w.Write(bytes)
 		}
 		return nil
 	})
