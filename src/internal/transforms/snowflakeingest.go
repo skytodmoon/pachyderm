@@ -127,24 +127,27 @@ func SnowflakeGet(ctx context.Context, db *sqlx.DB, params SnowflakeGetParams) e
 		if err != nil {
 			return errors.EnsureStack(err)
 		}
-		rows.Close()
-
-		dirEntrs, err := os.ReadDir(tempDir)
-		if err != nil {
-			return err
+		defer rows.Close()
+		tempfiles := []string{}
+		for rows.Next() {
+			var file, size, status, message string
+			if err = rows.Scan(&file, &size, &status, &message); err != nil {
+				return errors.EnsureStack(err)
+			}
+			log.Infof("GET result: %s,%s,%s,%s", file, size, status, message)
+			if status == "DOWNLOADED" {
+				tempfiles = append(tempfiles, filepath.Join(tempDir, filepath.Base(file)))
+			}
 		}
-		// There should be only one file due to the way we construct the Snowflake source path.
-		// However, GET can download multiple files with a common prefix, so this loop future proofs us a bit.
-		for _, de := range dirEntrs {
-			if de.Type().IsRegular() {
-				bytes, err := ioutil.ReadFile(filepath.Join(tempDir, de.Name()))
-				if err != nil {
-					return err
-				}
-				_, err = w.Write(bytes)
-				if err != nil {
-					return err
-				}
+
+		for _, f := range tempfiles {
+			bytes, err := ioutil.ReadFile(f)
+			if err != nil {
+				return err
+			}
+			_, err = w.Write(bytes)
+			if err != nil {
+				return err
 			}
 		}
 		return nil
