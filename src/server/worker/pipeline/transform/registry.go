@@ -256,7 +256,7 @@ func (reg *registry) processJobStarting(pj *pendingJob) error {
 		return err
 	}
 	if len(failed) > 0 {
-		reason := fmt.Sprintf("inputs failed: %s", strings.Join(failed, ", "))
+		reason := fmt.Sprintf("Cancelled because the following upstream pipelines failed: %s", strings.Join(failed, ", "))
 		return reg.failJob(pj, reason)
 	}
 	pj.ji.State = pps.JobState_JOB_RUNNING
