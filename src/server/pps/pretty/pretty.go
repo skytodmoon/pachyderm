@@ -66,7 +66,12 @@ func PrintJobInfo(w io.Writer, jobInfo *ppsclient.JobInfo, fullTimestamps bool) 
 	fmt.Fprintf(w, "%s\t", pretty.Size(jobInfo.Stats.DownloadBytes))
 	fmt.Fprintf(w, "%s\t", pretty.Size(jobInfo.Stats.UploadBytes))
 	if jobInfo.Reason != "" {
-		fmt.Fprintf(w, "%s: %s\t", JobState(jobInfo.State), safeTrim(jobInfo.Reason, jobReasonLen))
+		// detect cancelled rather than failed job
+		if jobInfo.State == ppsclient.JobState_JOB_FAILURE && strings.HasPrefix(jobInfo.Reason, "Cancelled because") {
+			fmt.Fprintf(w, "%s: %s\t", color.New(color.FgRed).SprintFunc()("cancelled"), safeTrim(jobInfo.Reason, jobReasonLen))
+		} else {
+			fmt.Fprintf(w, "%s: %s\t", JobState(jobInfo.State), safeTrim(jobInfo.Reason, jobReasonLen))
+		}
 	} else {
 		fmt.Fprintf(w, "%s\t", JobState(jobInfo.State))
 	}
