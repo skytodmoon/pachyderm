@@ -99,7 +99,7 @@ func (a *apiServer) master() {
 			a:         a,
 			pcMgr:     newPcManager(),
 			masterCtx: ctx,
-			kd:        newKubeDriver(a.env.KubeClient, a.env.Config, a.env.Logger),
+			kd:        NewKubeDriver(a.env.KubeClient, a.env.Config, a.env.Logger),
 		}
 		m.run()
 		return errors.Wrapf(ctx.Err(), "ppsMaster.Run() exited unexpectedly")
