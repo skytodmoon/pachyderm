@@ -313,6 +313,7 @@ func createSecretEnterpriseKeySecret(t testing.TB, ctx context.Context, kubeClie
 }
 
 func putRelease(t testing.TB, ctx context.Context, namespace string, kubeClient *kube.Clientset, f helmPutE, opts *DeployOpts) *client.APIClient {
+	start := time.Now()
 	if opts.CleanupAfter {
 		t.Cleanup(func() {
 			deleteRelease(t, context.Background(), namespace, kubeClient)
@@ -338,6 +339,7 @@ func putRelease(t testing.TB, ctx context.Context, namespace string, kubeClient 
 	if opts.Loki {
 		helmOpts = union(helmOpts, withLokiOptions(namespace, int(pachAddress.Port)))
 	}
+	t.Logf("starting helm install after %s", time.Since(start))
 	if err := f(t, helmOpts, chartPath, namespace); err != nil {
 		if opts.UseLeftoverCluster {
 			return pachClient(t, pachAddress, opts.AuthUser, namespace)
@@ -345,11 +347,15 @@ func putRelease(t testing.TB, ctx context.Context, namespace string, kubeClient 
 		deleteRelease(t, context.Background(), namespace, kubeClient)
 		require.NoError(t, f(t, helmOpts, chartPath, namespace))
 	}
+	t.Logf("helm install took %s", time.Since(start))
 	waitForPachd(t, ctx, kubeClient, namespace, version)
+	t.Logf("waiting for pachd took %s", time.Since(start))
 	if opts.Loki {
+		t.Logf("waiting for loki took %s", time.Since(start))
 		waitForLoki(t, pachAddress.Host, int(pachAddress.Port)+9)
 	}
 	waitForPgbouncer(t, ctx, kubeClient, namespace)
+	t.Logf("waiting for pgbouncer took %s", time.Since(start))
 	if opts.WaitSeconds > 0 {
 		time.Sleep(time.Duration(opts.WaitSeconds) * time.Second)
 	}
