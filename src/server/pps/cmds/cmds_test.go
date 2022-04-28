@@ -172,6 +172,7 @@ func TestFailedPipelineInfo(t *testing.T) {
 		"pipeline", pipeline2, "inputPipeline", pipeline1).Run())
 	require.NoError(t, tu.BashCmd(`
 		pachctl wait commit data@master
+                sleep 10
 
 		# make sure the results have the full pipeline info, including version
 		pachctl list pipeline \
