@@ -12,7 +12,7 @@ import (
 type TableInfo struct {
 	Name    string
 	Schema  string
-	Columns []ColumnInfo
+	Columns []*ColumnInfo
 }
 
 // ColumnInfo is information about a single column in a SQL table
@@ -20,6 +20,13 @@ type ColumnInfo struct {
 	Name       string
 	DataType   string
 	IsNullable bool
+
+	// For fixed-point numbers
+	Precision int64
+	Scale     int64
+
+	// TODO do we need to include the Go type?
+	// ScanType reflect.Type
 }
 
 // GetTableInfo looks up information about the table using INFORMATION_SCHEMA
@@ -43,7 +50,7 @@ func GetTableInfo(ctx context.Context, db *DB, tableName string) (*TableInfo, er
 // GetTableInfoTx looks up information about the table using INFORMATION_SCHEMA
 func GetTableInfoTx(tx *Tx, tablePath string) (*TableInfo, error) {
 	schemaName, tableName := SplitTableSchema(tx.DriverName(), tablePath)
-	var cinfos []ColumnInfo
+	var cinfos []*ColumnInfo
 	if schemaName == "" {
 		// Check whether table is unique, and infer schema_name
 		if rows, err := tx.Query(fmt.Sprintf(`
@@ -71,7 +78,9 @@ func GetTableInfoTx(tx *Tx, tablePath string) (*TableInfo, error) {
 	    CASE upper(is_nullable)
 			WHEN 'YES' THEN true
 		   	ELSE false
-		END
+		END,
+		numeric_precision,
+		numeric_scale
 	FROM information_schema.columns
 	WHERE upper(table_name) = upper('%s') AND upper(table_schema) = upper('%s')
 	ORDER BY ordinal_position`, tableName, schemaName)
@@ -84,10 +93,10 @@ func GetTableInfoTx(tx *Tx, tablePath string) (*TableInfo, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var ci ColumnInfo
-		if err := rows.Scan(&ci.Name, &ci.DataType, &ci.IsNullable); err != nil {
+		if err := rows.Scan(&ci.Name, &ci.DataType, &ci.IsNullable, &ci.Precision, &ci.Scale); err != nil {
 			return nil, errors.EnsureStack(err)
 		}
-		cinfos = append(cinfos, ci)
+		cinfos = append(cinfos, &ci)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.EnsureStack(err)

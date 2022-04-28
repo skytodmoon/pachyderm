@@ -45,6 +45,7 @@ func TestFormatParse(t *testing.T) {
 			},
 		},
 	}
+	// TODO add more types to this to check
 	newTuple := func() Tuple {
 		a := int64(0)
 		b := float64(0)
@@ -114,33 +115,38 @@ func TestFormatParse(t *testing.T) {
 // with all the supported writers.
 // It does not check that the writers themselves output in the correct format.
 func TestMaterializeSQL(t *testing.T) {
+
 	dbSpecs := []struct {
-		Name string
-		New  func(t testing.TB) *sqlx.DB
+		Name   string
+		New    func(t testing.TB) *sqlx.DB
+		Schema interface{}
 	}{
 		{
 			"Postgres",
 			dockertestenv.NewPostgres,
+			pachsql.TestRow{},
 		},
-		{
-			"MySQL",
-			dockertestenv.NewMySQL,
-		},
-		{
-			"Snowflake",
-			testsnowflake.NewSnowSQL,
-		},
+		// {
+		// 	"MySQL",
+		// 	dockertestenv.NewMySQL,
+		// 	pachsql.TestRow{},
+		// },
+		// {
+		// 	"Snowflake",
+		// 	testsnowflake.NewSnowSQL,
+		// 	pachsql.TestRow{},
+		// },
 	}
 	writerSpecs := []struct {
 		Name string
 		New  func(io.Writer, []string) TupleWriter
 	}{
-		{
-			"JSON",
-			func(w io.Writer, names []string) TupleWriter {
-				return NewJSONWriter(w, names)
-			},
-		},
+		// {
+		// 	"JSON",
+		// 	func(w io.Writer, names []string) TupleWriter {
+		// 		return NewJSONWriter(w, names)
+		// 	},
+		// },
 		{
 			"CSV",
 			func(w io.Writer, names []string) TupleWriter {
@@ -152,15 +158,19 @@ func TestMaterializeSQL(t *testing.T) {
 		for _, writerSpec := range writerSpecs {
 			testName := fmt.Sprintf("%s-%s", dbSpec.Name, writerSpec.Name)
 			t.Run(testName, func(t *testing.T) {
+				// setup
 				db := dbSpec.New(t)
-				setupTable(t, db)
-				rows, err := db.Query(`SELECT * FROM test_data`)
+				tableName := "test_table"
+				setupTable(t, db, tableName, dbSpec.Schema, 10)
+				rows, err := db.Query(fmt.Sprintf(`SELECT * FROM %s`, tableName))
 				require.NoError(t, err)
 				defer rows.Close()
 				buf := &bytes.Buffer{}
 				colNames, err := rows.Columns()
 				require.NoError(t, err)
 				w := writerSpec.New(buf, colNames)
+
+				// test
 				_, err = MaterializeSQL(w, rows)
 				require.NoError(t, err)
 				t.Log(buf.String())
@@ -229,8 +239,7 @@ func TestSQLTupleWriter(t *testing.T) {
 	}
 }
 
-func setupTable(t testing.TB, db *pachsql.DB) {
-	const N = 10
-	require.NoError(t, pachsql.CreateTestTable(db, "test_data", pachsql.TestRow{}))
-	require.NoError(t, pachsql.GenerateTestData(db, "test_data", N))
+func setupTable(t testing.TB, db *pachsql.DB, tableName string, schema interface{}, n int) {
+	require.NoError(t, pachsql.CreateTestTable(db, tableName, schema))
+	require.NoError(t, pachsql.GenerateTestData(db, tableName, schema, n))
 }

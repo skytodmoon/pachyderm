@@ -81,20 +81,20 @@ func CreateTestTable(db *DB, name string, schema interface{}) error {
 	return errors.EnsureStack(err)
 }
 
-func GenerateTestData(db *DB, tableName string, n int) error {
+func GenerateTestData(db *DB, tableName string, row interface{}, n int) error {
 	fz := fuzz.New()
 	// support mysql
 	fz.Funcs(func(ti *time.Time, co fuzz.Continue) {
 		*ti = time.Now()
 	})
 	fz.Funcs(fuzz.UnicodeRange{First: '!', Last: '~'}.CustomStringFuzzFunc())
-	var row TestRow
-	insertStatement := fmt.Sprintf("INSERT INTO test_data %s VALUES %s", formatColumns(row), formatValues(row, db))
+	var row2 TestRow
+	insertStatement := fmt.Sprintf("INSERT INTO %s %s VALUES %s", tableName, formatColumns(row), formatValues(row, db))
 	for i := 0; i < n; i++ {
-		fz.Fuzz(&row)
-		row.Id = i
-		row.Time = time.Now() // support mysql
-		if _, err := db.Exec(insertStatement, makeArgs(row)...); err != nil {
+		fz.Fuzz(&row2)
+		// row.Id = i
+		// row.Time = time.Now() // support mysql
+		if _, err := db.Exec(insertStatement, makeArgs(row2)...); err != nil {
 			return errors.EnsureStack(err)
 		}
 	}

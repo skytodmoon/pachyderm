@@ -2,7 +2,9 @@ package sdata
 
 import (
 	"database/sql"
+	"fmt"
 	"io"
+	"reflect"
 	"time"
 
 	"github.com/pachyderm/pachyderm/v2/src/internal/errors"
@@ -14,6 +16,14 @@ import (
 // The elements of a tuple will always be pointers so the Tuple can
 // be passed to sql.Rows.Scan
 type Tuple = []interface{}
+
+// func (t Tuple) String() string {
+// 	result := []string{}
+// 	for i, x := range t {
+// 		result = append(result, fmt.Sprintf("[%d] type: %v value: %v", i, reflect.TypeOf(x), reflect.ValueOf(x)))
+// 	}
+// 	return "Tuple[" + strings.Join(result, ", ") + "]"
+// }
 
 // TupleWriter is the type of Writers for structured data.
 type TupleWriter interface {
@@ -76,13 +86,8 @@ func MaterializeSQL(tw TupleWriter, rows *sql.Rows) (*MaterializationResult, err
 func NewTupleFromColumnTypes(cTypes []*sql.ColumnType) (Tuple, error) {
 	row := make(Tuple, len(cTypes))
 	for i, cType := range cTypes {
-		dbType := cType.DatabaseTypeName()
-		nullable, ok := cType.Nullable()
-		if !ok {
-			nullable = true
-		}
 		var err error
-		row[i], err = makeTupleElement(dbType, nullable)
+		row[i], err = makeTupleElementFromColumnType(cType)
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +116,7 @@ func NewTupleFromTableInfo(info *pachsql.TableInfo) (Tuple, error) {
 	tuple := make(Tuple, len(info.Columns))
 	for i, ci := range info.Columns {
 		var err error
-		tuple[i], err = makeTupleElement(ci.DataType, ci.IsNullable)
+		tuple[i], err = makeTupleElementFromInformationSchema(ci)
 		if err != nil {
 			return nil, err
 		}
@@ -119,53 +124,134 @@ func NewTupleFromTableInfo(info *pachsql.TableInfo) (Tuple, error) {
 	return tuple, nil
 }
 
-func makeTupleElement(dbType string, nullable bool) (interface{}, error) {
-	switch dbType {
-	case "BOOL", "BOOLEAN":
+// Convert using Null types explicitly
+func makeTupleElementFromColumnType(colType *sql.ColumnType) (interface{}, error) {
+	if colType == nil {
+		return nil, errors.Errorf("colType cannot be nil")
+	}
+
+	nullable, ok := colType.Nullable()
+	if !ok {
+		nullable = true
+	}
+
+	fmt.Println(colType.Name(), colType.DatabaseTypeName(), nullable, colType.ScanType())
+	switch colType.ScanType() {
+	case reflect.TypeOf(bool(false)):
 		if nullable {
+			return new(sql.NullBool), nil
+		}
+		return new(bool), nil
+	case reflect.TypeOf(int16(0)), reflect.TypeOf(sql.NullInt16{}):
+		if nullable {
+			return new(sql.NullInt16), nil
+		}
+		return new(int16), nil
+	case reflect.TypeOf(int32(0)), reflect.TypeOf(sql.NullInt32{}):
+		if nullable {
+			return new(sql.NullInt32), nil
+		}
+		return new(int32), nil
+	case reflect.TypeOf(int64(0)), reflect.TypeOf(sql.NullInt64{}):
+		if nullable {
+			return new(sql.NullInt64), nil
+		}
+		return new(int64), nil
+	case reflect.TypeOf(float32(0)):
+		if nullable {
+			return new(sql.NullFloat64), nil
+		}
+		return new(float32), nil
+	case reflect.TypeOf(float64(0)), reflect.TypeOf(sql.NullFloat64{}):
+		if nullable {
+			return new(sql.NullFloat64), nil
+		}
+		return new(float64), nil
+	case reflect.TypeOf(string("")):
+		if nullable {
+			return new(sql.NullString), nil
+		}
+		return new(string), nil
+	case reflect.TypeOf(time.Time{}), reflect.TypeOf(sql.NullTime{}):
+		if nullable {
+			return new(sql.NullTime), nil
+		}
+		return new(time.Time), nil
+	case reflect.TypeOf(byte(0)):
+		if nullable {
+			return new(sql.NullByte), nil
+		}
+		return new(byte), nil
+	case reflect.TypeOf(sql.RawBytes{}):
+		return new(sql.RawBytes), nil
+	default:
+		return nil, errors.Errorf("Unrecognized type: %v", colType.ScanType())
+	}
+}
+
+func makeTupleElementFromInformationSchema(colInfo *pachsql.ColumnInfo) (interface{}, error) {
+	if colInfo == nil {
+		return nil, errors.Errorf("ColumnInfo cannot be nil")
+	}
+	switch colInfo.DataType {
+	case "NUMBER":
+		// TODO deal with precision as well
+		if colInfo.IsNullable {
+			if colInfo.Scale == 0 {
+				return new(sql.NullInt64), nil
+			} else {
+				return new(sql.NullFloat64), nil
+			}
+		} else {
+			if colInfo.Scale == 0 {
+				return new(int64), nil
+			} else {
+				return new(float64), nil
+			}
+		}
+	case "BOOL", "BOOLEAN":
+		if colInfo.IsNullable {
 			return new(sql.NullBool), nil
 		} else {
 			return new(bool), nil
 		}
 	case "SMALLINT", "INT2":
-		if nullable {
+		if colInfo.IsNullable {
 			return new(sql.NullInt16), nil
 		} else {
 			return new(int16), nil
 		}
 	case "INTEGER", "INT", "INT4":
-		if nullable {
+		if colInfo.IsNullable {
 			return new(sql.NullInt32), nil
 		} else {
 			return new(int32), nil
 		}
-	// TODO "NUMBER" type from Snowflake can vary in precision, but default to int64 for now.
-	// https://docs.snowflake.com/en/sql-reference/data-types-numeric.html#number
-	case "BIGINT", "INT8", "FIXED", "NUMBER":
-		if nullable {
+	case "BIGINT", "INT8":
+		if colInfo.IsNullable {
 			return new(sql.NullInt64), nil
 		} else {
 			return new(int64), nil
 		}
 	case "FLOAT", "FLOAT8", "REAL", "DOUBLE PRECISION":
-		if nullable {
+		if colInfo.IsNullable {
 			return new(sql.NullFloat64), nil
 		} else {
 			return new(float64), nil
 		}
 	case "VARCHAR", "TEXT", "CHARACTER VARYING":
-		if nullable {
+		if colInfo.IsNullable {
 			return new(sql.NullString), nil
 		} else {
 			return new(string), nil
 		}
 	case "DATE", "TIMESTAMP", "TIMESTAMP_NTZ", "TIMESTAMP WITHOUT TIME ZONE":
-		if nullable {
+		if colInfo.IsNullable {
 			return new(sql.NullTime), nil
 		} else {
 			return new(time.Time), nil
 		}
 	default:
-		return nil, errors.Errorf("unrecognized type: %v", dbType)
+		return nil, errors.Errorf("unrecognized type: %v", colInfo.DataType)
 	}
 }
