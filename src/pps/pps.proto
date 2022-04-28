@@ -414,6 +414,8 @@ message PipelineInfo {
     bool autoscaling = 33;
   }
   Details details = 12;
+  // last_job_reason indicates the reason for the last job state
+  string last_job_reason = 13;
 }
 
 message PipelineInfos {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 	"text/template"
 
@@ -132,7 +131,7 @@ func PrintPipelineInfo(w io.Writer, pipelineInfo *ppsclient.PipelineInfo, fullTi
 		fmt.Fprint(w, "-\t")
 		fmt.Fprint(w, "-\t")
 		fmt.Fprint(w, "-\t")
-		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState, pipelineInfo.Reason))
+		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState, pipelineInfo.LastJobReason))
 		fmt.Fprint(w, "pipeline details unavailable\t")
 	} else {
 		fmt.Fprintf(w, "%s\t", pipelineInfo.Pipeline.Name)
@@ -143,7 +142,7 @@ func PrintPipelineInfo(w io.Writer, pipelineInfo *ppsclient.PipelineInfo, fullTi
 		} else {
 			fmt.Fprintf(w, "%s\t", pretty.Ago(pipelineInfo.Details.CreatedAt))
 		}
-		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState, pipelineInfo.Reason))
+		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState, pipelineInfo.LastJobReason))
 		fmt.Fprintf(w, "%s\t", pipelineInfo.Details.Description)
 	}
 	fmt.Fprintln(w)
@@ -407,7 +406,6 @@ func JobState(state ppsclient.JobState, reason string) string {
 	case ppsclient.JobState_JOB_RUNNING:
 		return color.New(color.FgYellow).SprintFunc()("running")
 	case ppsclient.JobState_JOB_FAILURE:
-		log.Println("QQQ", reason)
 		if strings.HasPrefix(reason, "Cancelled because") {
 			return color.New(color.FgRed).SprintFunc()("cancelled")
 		}
