@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"text/template"
 
@@ -66,14 +67,9 @@ func PrintJobInfo(w io.Writer, jobInfo *ppsclient.JobInfo, fullTimestamps bool) 
 	fmt.Fprintf(w, "%s\t", pretty.Size(jobInfo.Stats.DownloadBytes))
 	fmt.Fprintf(w, "%s\t", pretty.Size(jobInfo.Stats.UploadBytes))
 	if jobInfo.Reason != "" {
-		// detect cancelled rather than failed job
-		if jobInfo.State == ppsclient.JobState_JOB_FAILURE && strings.HasPrefix(jobInfo.Reason, "Cancelled because") {
-			fmt.Fprintf(w, "%s: %s\t", color.New(color.FgRed).SprintFunc()("cancelled"), safeTrim(jobInfo.Reason, jobReasonLen))
-		} else {
-			fmt.Fprintf(w, "%s: %s\t", JobState(jobInfo.State), safeTrim(jobInfo.Reason, jobReasonLen))
-		}
+		fmt.Fprintf(w, "%s: %s\t", JobState(jobInfo.State, jobInfo.Reason), safeTrim(jobInfo.Reason, jobReasonLen))
 	} else {
-		fmt.Fprintf(w, "%s\t", JobState(jobInfo.State))
+		fmt.Fprintf(w, "%s\t", JobState(jobInfo.State, jobInfo.Reason))
 	}
 	fmt.Fprintln(w)
 }
@@ -136,7 +132,7 @@ func PrintPipelineInfo(w io.Writer, pipelineInfo *ppsclient.PipelineInfo, fullTi
 		fmt.Fprint(w, "-\t")
 		fmt.Fprint(w, "-\t")
 		fmt.Fprint(w, "-\t")
-		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState))
+		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState, pipelineInfo.Reason))
 		fmt.Fprint(w, "pipeline details unavailable\t")
 	} else {
 		fmt.Fprintf(w, "%s\t", pipelineInfo.Pipeline.Name)
@@ -147,7 +143,7 @@ func PrintPipelineInfo(w io.Writer, pipelineInfo *ppsclient.PipelineInfo, fullTi
 		} else {
 			fmt.Fprintf(w, "%s\t", pretty.Ago(pipelineInfo.Details.CreatedAt))
 		}
-		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState))
+		fmt.Fprintf(w, "%s / %s\t", pipelineState(pipelineInfo.State), JobState(pipelineInfo.LastJobState, pipelineInfo.Reason))
 		fmt.Fprintf(w, "%s\t", pipelineInfo.Details.Description)
 	}
 	fmt.Fprintln(w)
@@ -199,7 +195,7 @@ Pipeline: {{.Job.Pipeline.Name}}{{if .FullTimestamps}}
 Started: {{.Started}}{{else}}
 Started: {{prettyAgo .Started}} {{end}}{{if .Finished}}
 Duration: {{prettyTimeDifference .Started .Finished}} {{end}}
-State: {{jobState .State}}
+State: {{jobState .State .Reason}}
 Reason: {{.Reason}}
 Processed: {{.DataProcessed}}
 Failed: {{.DataFailed}}
@@ -404,13 +400,17 @@ func datumState(datumState ppsclient.DatumState) string {
 }
 
 // JobState returns the state of a job as a pretty printed string.
-func JobState(jobState ppsclient.JobState) string {
-	switch jobState {
+func JobState(state ppsclient.JobState, reason string) string {
+	switch state {
 	case ppsclient.JobState_JOB_STARTING:
 		return color.New(color.FgYellow).SprintFunc()("starting")
 	case ppsclient.JobState_JOB_RUNNING:
 		return color.New(color.FgYellow).SprintFunc()("running")
 	case ppsclient.JobState_JOB_FAILURE:
+		log.Println("QQQ", reason)
+		if strings.HasPrefix(reason, "Cancelled because") {
+			return color.New(color.FgRed).SprintFunc()("cancelled")
+		}
 		return color.New(color.FgRed).SprintFunc()("failure")
 	case ppsclient.JobState_JOB_SUCCESS:
 		return color.New(color.FgGreen).SprintFunc()("success")

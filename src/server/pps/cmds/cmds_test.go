@@ -145,7 +145,7 @@ func TestFailedPipelineInfo(t *testing.T) {
 		    },
 		    "transform": {
 		      "cmd": ["bash"],
-		      "stdin": ["exit 1"]
+		      "stdin": ["sleep 2; exit 1"]
 		    }
 		  }
 		EOF
@@ -172,7 +172,7 @@ func TestFailedPipelineInfo(t *testing.T) {
 		"pipeline", pipeline2, "inputPipeline", pipeline1).Run())
 	require.NoError(t, tu.BashCmd(`
 		pachctl wait commit data@master
-                sleep 10
+                sleep 15
 
 		# make sure the results have the full pipeline info, including version
 		pachctl list pipeline \

@@ -2253,6 +2253,7 @@ func (a *apiServer) getLatestJobState(ctx context.Context, info *pps.PipelineInf
 		&job,
 		opts, func(_ string) error {
 			info.LastJobState = job.State
+			info.Reason = job.Reason
 			return errutil.ErrBreak // not strictly necessary because we are limiting to 1 already
 		})
 	return errors.EnsureStack(err)

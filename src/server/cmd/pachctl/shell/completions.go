@@ -263,9 +263,9 @@ func JobSetCompletion(_, text string, maxCompletions int64) ([]prompt.Suggest, C
 func jobDesc(ji *pps.JobInfo) string {
 	statusString := ""
 	if ji.Finished == nil {
-		statusString = fmt.Sprintf("%s for %s", pps_pretty.JobState(ji.State), pretty.Since(ji.Started))
+		statusString = fmt.Sprintf("%s for %s", pps_pretty.JobState(ji.State, ji.Reason), pretty.Since(ji.Started))
 	} else {
-		statusString = fmt.Sprintf("%s %s", pps_pretty.JobState(ji.State), pretty.Ago(ji.Finished))
+		statusString = fmt.Sprintf("%s %s", pps_pretty.JobState(ji.State, ji.Reason), pretty.Ago(ji.Finished))
 	}
 	return fmt.Sprintf("%s: %s - %s", ji.Job.Pipeline.Name, pps_pretty.Progress(ji), statusString)
 }
