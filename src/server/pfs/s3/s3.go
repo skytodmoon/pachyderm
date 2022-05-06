@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pachyderm/pachyderm/v2/src/client"
 
-	"github.com/pachyderm/s2"
+	"github.com/pachyderm/pachyderm/v2/s2"
 	"github.com/sirupsen/logrus"
 )
 

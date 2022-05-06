@@ -9,13 +9,27 @@ import (
 	"net/http"
 	"strings"
 
+	"encoding/json"
+
 	"github.com/gogo/protobuf/types"
+	"github.com/pachyderm/pachyderm/v2/s2"
 	"github.com/pachyderm/pachyderm/v2/src/internal/errutil"
 	pfsServer "github.com/pachyderm/pachyderm/v2/src/server/pfs"
-	"github.com/pachyderm/s2"
 )
 
-func (c *controller) GetObject(r *http.Request, bucketName, file, version string) (*s2.GetObjectResult, error) {
+func j(i interface{}) string {
+	bs, err := json.Marshal(i)
+	if err != nil {
+		return fmt.Sprintf("(err) %s", err)
+	}
+	return string(bs)
+}
+
+func (c *controller) GetObject(r *http.Request, bucketName, file, version string) (res *s2.GetObjectResult, retErr error) {
+	c.logger.Infof(">>>> GetObject: %s", j(r.Header))
+	defer func() {
+		c.logger.Infof("<<<< GetObject: %#v -> %s", res, retErr)
+	}()
 	c.logger.Debugf("GetObject: bucketName=%+v, file=%+v, version=%+v", bucketName, file, version)
 
 	pc, err := c.requestClient(r)
