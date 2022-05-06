@@ -44,3 +44,6 @@ proxy:
             oidc: 30657
             identity: 30658
             metrics: 30656
+    resources:
+        requests:
+            cpu: 0m

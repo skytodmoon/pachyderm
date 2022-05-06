@@ -156,6 +156,7 @@ func localDeploymentWithMinioOptions(namespace, image string) *helm.Options {
 			"proxy.service.legacyPorts.identity":  "30658",
 			"proxy.service.legacyPorts.s3Gateway": "30600",
 			"proxy.service.legacyPorts.metrics":   "30656",
+			"proxy.resources.requests.cpu":        "0m",
 		},
 		SetStrValues: map[string]string{
 			"pachd.storage.minio.signature": "",
@@ -227,18 +228,7 @@ func waitForPachd(t testing.TB, ctx context.Context, kubeClient *kube.Clientset,
 			if p.Status.Phase == v1.PodRunning && strings.HasSuffix(p.Spec.Containers[0].Image, ":"+version) && p.Status.ContainerStatuses[0].Ready && len(pachds.Items) == 1 {
 				return nil
 			}
-			status := new(strings.Builder)
-			status.WriteString(fmt.Sprintf("%s: %s (messages=%s, reason=%s)", p.Name, p.Status.Phase, p.Status.Message, p.Status.Reason))
-			for _, c := range p.Status.ContainerStatuses {
-				status.WriteString(fmt.Sprintf("\t%s (%s) %#v ", c.Name, c.Image, c.State))
-				if c.Ready {
-					status.WriteString("(READY)")
-				} else {
-					status.WriteString("(not ready)")
-				}
-				status.WriteByte('\n')
-			}
-			statuses = append(statuses, "{"+status.String()+"}")
+			statuses = append(statuses, fmt.Sprintf("{%v: status=%#v}", p.Name, p.Status))
 		}
 		t.Logf("deployment in progress: %v", statuses)
 		return errors.Errorf("deployment in progress: %v", statuses)
